@@ -60,4 +60,5 @@ Models must generate predictions every 15 minutes for both horizons.
 
 - Package repo: https://github.com/jberros/btcvol-python
 - Deribit DVOL API: https://docs.deribit.com/#public-get_volatility_index_data
+- CrunchDAO price data API: https://pricedb.crunchdao.com/
 - CrunchDAO forum: https://forum.crunchdao.com

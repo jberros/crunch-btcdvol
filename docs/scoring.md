@@ -14,10 +14,8 @@ Lower MSE is better.
 The official competition score uses a 30-day window matching the DVOL target. Additional windows are provided for monitoring:
 
 - 30D Final Score (official)
-- 14D Steady Score
 - 7D Live Score
 - 24H Short-term Score
-- 4H Short-term Score
 - 1H Recent Score
 
 ## Prediction Frequency
