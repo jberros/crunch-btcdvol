@@ -23,11 +23,15 @@ jupyter notebook ../notebooks/Getting_Started.ipynb
 
 ### Data Sources
 
-1. Deribit Volatility Index API
+1. Historical Deribit BTC DVOL data
+   - notebooks/deribit_btc_dvol_15min_ohlc.csv
+   - notebooks/deribit_btc_dvol_daily_ohlc.csv
+
+2. Deribit Volatility Index API
    - Target DVOL (30-day implied volatility) for scoring
    - Endpoint: `/public/get_volatility_index_data`
 
-2. CrunchDAO Price API (optional for model development)
+3. CrunchDAO Price API (optional for model development)
    - Historical and real-time Bitcoin price data
    - You can also use other public sources (for example Pyth Network)
 
