@@ -1,0 +1,10 @@
+site_name: BTC DVOL Competition
+site_description: Participant documentation for the BTC DVOL competition
+site_url: https://crunchdao.com
+nav:
+  - Home: index.md
+  - Competition Overview: competition_overview.md
+  - Getting Started: getting_started.md
+  - Scoring: scoring.md
+  - Submission: submission.md
+  - FAQ: faq.md
