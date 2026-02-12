@@ -1,0 +1,9 @@
+# frozen from registry
+
+btcvol
+matplotlib
+numpy
+pandas
+requests
+scikit-learn==1.8.0
+seaborn
