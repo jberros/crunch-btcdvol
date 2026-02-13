@@ -455,11 +455,14 @@ from pathlib import Path
 #print(f"✓ Wrote model.pkl, scaler.pkl, feature_cols.json to {resources_dir.resolve()}")
 
 
-# Submission-ready RandomForest tracker with successful minimal structure
+# Submission-ready RandomForest tracker with live feature engineering in predict()
 import numpy as np
+import pandas as pd
+import requests
 import base64
 import pickle
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from btcvol import TrackerBase
 
@@ -467,6 +470,7 @@ from btcvol import TrackerBase
 class MyTracker(TrackerBase):
     """
     Random Forest tracker with embedded model.
+    Uses TrackerBase helper methods to fetch live data at prediction time.
     """
 
     # Class variables for embedded serialized model (populated after training)
@@ -476,6 +480,8 @@ class MyTracker(TrackerBase):
 
     def __init__(self):
         """Initialize tracker with embedded model and scaler."""
+        super().__init__()  # Initialize TrackerBase
+        
         # Try to use notebook globals first (development mode)
         if 'model' in globals() and 'scaler' in globals() and 'feature_cols' in globals():
             self.model = globals()['model']
@@ -505,28 +511,109 @@ class MyTracker(TrackerBase):
 
         raise RuntimeError("Model, scaler, or feature_cols not found. Provide resources or embed base64.")
 
+    def _create_features_from_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create lag and rolling features from merged price/dvol data.
+        Mirrors the create_features function used during training.
+        """
+        df = data.copy()
+        
+        # Ensure we have required columns
+        if 'dvol' not in df.columns:
+            raise ValueError("Missing 'dvol' column in data")
+
+        # Lag features
+        for lag in [1, 2, 3, 7]:
+            df[f"lag_{lag}"] = df["dvol"].shift(lag)
+
+        # Rolling mean features
+        for window in [3, 7, 14]:
+            df[f"rolling_mean_{window}"] = df["dvol"].rolling(window=window).mean().shift(1)
+
+        # Rolling std features
+        for window in [3, 7, 14]:
+            df[f"rolling_std_{window}"] = df["dvol"].rolling(window=window).std().shift(1)
+
+        # Day of week and month
+        df["day_of_week"] = df["timestamp"].dt.dayofweek
+        df["day_of_month"] = df["timestamp"].dt.day
+
+        # BTC price-based features (if price column exists)
+        if 'price' in df.columns:
+            df["btc_price"] = df["price"]
+            df["btc_return_1"] = df["btc_price"].pct_change(1)
+            df["btc_return_4"] = df["btc_price"].pct_change(4)
+            df["btc_volatility_96"] = df["btc_return_1"].rolling(96).std().shift(1)
+
+        # Fill NaN values
+        df = df.ffill().bfill()
+        
+        # Ensure all required feature columns exist
+        for col in self.feature_cols:
+            if col not in df.columns:
+                df[col] = 0.0
+
+        return df
+
     def predict(self, asset: str, horizon: int, step: int):
         """
         Generate volatility predictions using RandomForest model.
-        Implements the proven minimal structure that passes validation.
+        Build live features at inference time from fresh DVOL and BTC price data.
         """
         n_steps = max(1, horizon // step)
 
-        # Get current prediction from model
         try:
-            # Use most recent features if available
-            if 'df_features' in globals():
-                X = globals()['df_features'].iloc[-1:][self.feature_cols]
-                X_scaled = self.scaler.transform(X)
-                pred_vol_pct = float(self.model.predict(X_scaled)[0])
+            # Fetch price data from CrunchDAO API
+            number_days_prices = 15
+            pairs_prices = self.fetch_price_data(asset, days=number_days_prices, step=step)
+            
+            if pairs_prices:
+                df_prices = pd.DataFrame(pairs_prices, columns=["timestamp", "price"])
+                df_prices["timestamp"] = pd.to_datetime(df_prices["timestamp"], unit="s")
+                df_prices = df_prices.sort_values("timestamp")
             else:
-                # Fallback: use dummy features
-                X_dummy = np.zeros((1, len(self.feature_cols)))
-                X_scaled = self.scaler.transform(X_dummy)
-                pred_vol_pct = float(self.model.predict(X_scaled)[0])
-        except Exception:
-            # Safety fallback
-            pred_vol_pct = 50.0
+                df_prices = pd.DataFrame(columns=["timestamp", "price"])
+
+            # Fetch BTC DVOL history from Deribit API (via TrackerBase helper)
+            df_dvol = self.fetch_latest_dvol_data(step=step)
+            
+            if df_dvol is None or df_dvol.empty:
+                raise ValueError("No DVOL data available")
+
+            # Merge price and DVOL data
+            if not df_prices.empty:
+                data = df_dvol.merge(df_prices, on="timestamp", how="inner")
+            else:
+                data = df_dvol  # Use DVOL-only features if no price data
+
+            if data.empty or len(data) < 20:
+                raise ValueError("Insufficient data after merge")
+
+            # Create features from merged data
+            df_features = self._create_features_from_data(data)
+            
+            # Get the most recent row with all features
+            latest = df_features.iloc[-1:][self.feature_cols].copy()
+            latest = latest.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            
+            # Make prediction
+            X_scaled = self.scaler.transform(latest)
+            pred_vol_pct = float(self.model.predict(X_scaled)[0])
+
+        except Exception as e:
+            # Development fallback if notebook features are available
+            try:
+                if 'df_features' in globals():
+                    X = globals()['df_features'].iloc[-1:][self.feature_cols]
+                    X_scaled = self.scaler.transform(X)
+                    pred_vol_pct = float(self.model.predict(X_scaled)[0])
+                else:
+                    # Final fallback: use dummy features
+                    X_dummy = np.zeros((1, len(self.feature_cols)))
+                    X_scaled = self.scaler.transform(X_dummy)
+                    pred_vol_pct = float(self.model.predict(X_scaled)[0])
+            except Exception:
+                pred_vol_pct = 50.0
 
         # Clamp to reasonable range (0-100%)
         pred_vol_pct = max(0, min(100, pred_vol_pct))
