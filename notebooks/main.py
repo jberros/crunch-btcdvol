@@ -1,3 +1,7 @@
+#%pip install crunch-cli --upgrade --quiet --progress-bar off
+#!crunch setup-notebook btcdvol OSLuGUBgHfWBVv3yrV5s9DEd
+
+
 # Install required packages
 import subprocess
 import sys
@@ -46,16 +50,18 @@ from btcvol import TrackerBase, test_model_locally
 #print("✓ All libraries imported successfully!")
 
 
+import crunch
+
+# Load the Crunch Toolings
+#crunch_tools = crunch.load_notebook()
+
+
 from pathlib import Path
 
 # Load 15-minute DVOL data from the uploaded CSV
-#data_path = Path("deribit_btc_dvol_15min_ohlc.csv")
+#data_path = Path("data/deribit_btc_dvol_15min_ohlc.csv")
 #if not data_path.exists():
-#    alt_path = Path("notebooks") / "deribit_btc_dvol_15min_ohlc.csv"
-#    if alt_path.exists():
-#        data_path = alt_path
-#    else:
-#        raise FileNotFoundError("deribit_btc_dvol_15min_ohlc.csv not found in notebook or project root")
+#      raise FileNotFoundError("deribit_btc_dvol_15min_ohlc.csv not found in the data directory")
 
 #df_raw = pd.read_csv(data_path)
 
@@ -203,7 +209,7 @@ def create_features(data, lags=[1, 2, 3, 7], horizon_steps=96):
 
 
 # Price Data Provider (from crunch-synth)
-# https://github.com/crunchdao/crunch-synth/blob/main/crunch_synth/price_provider.py
+# https://github.com/crunchdao/crunch-synth/blob/master/crunch_synth/price_provider.py
 
 from datetime import datetime
 import requests
@@ -214,7 +220,7 @@ class PriceUnavailableError(ValueError):
 
 class PriceDbClient:
     _HISTORY_URL = "https://pricedb.crunchdao.com/v1/prices"
-    
+
     def get_price_history(
         self,
         *,
@@ -228,19 +234,19 @@ class PriceDbClient:
             "from": from_.isoformat(),
             "to": to.isoformat(),
         }
-        
+
         try:
             response = requests.get(
                 self._HISTORY_URL,
                 timeout=timeout,
                 params=query,
             )
-            
+
             response.raise_for_status()
             root = response.json()
         except Exception as error:
             raise PriceUnavailableError(f"Could not get price history for {asset}: {error}") from error
-        
+
         return list(zip(root["timestamp"], root["close"]))
 
 # Initialize the price data client
@@ -256,62 +262,65 @@ class PriceDbClient:
 #    # Get the date range from our DVOL data
 #    start_date = df_dvol['timestamp'].min()
 #    end_date = df_dvol['timestamp'].max()
-#    
+#
 #    print(f"Date range: {start_date} to {end_date}")
-#    
+#
 #    # Fetch BTC price history
 #    btc_prices = pricedb.get_price_history(
 #        asset="BTC",
 #        from_=start_date.to_pydatetime(),
 #        to=end_date.to_pydatetime(),
 #    )
-#    
+#
 #    print(f"Fetched {len(btc_prices)} BTC price data points")
-#    
+#
 #    # Convert to DataFrame
 #    df_btc = pd.DataFrame(btc_prices, columns=['timestamp', 'btc_price'])
 #    df_btc['timestamp'] = pd.to_datetime(df_btc['timestamp'], unit='s', utc=True)
-#    
-#    # Ensure both timestamps have the same precision
-#    df_btc['timestamp'] = df_btc['timestamp'].astype('datetime64[us, UTC]')
-#    
+#
+#    # Ensure both timestamps have the same precision (convert both to ns for compatibility)
+#    df_btc['timestamp'] = df_btc['timestamp'].astype('datetime64[ns, UTC]')
+#    df_features_copy = df_features.copy()
+#    df_features_copy['timestamp'] = df_features_copy['timestamp'].astype('datetime64[ns, UTC]')
+#
 #    # Merge BTC price data with our features
 #    # Using merge_asof to handle time alignment (nearest timestamp match)
 #    df_features_with_price = pd.merge_asof(
-#        df_features.sort_values('timestamp'),
+#        df_features_copy.sort_values('timestamp'),
 #        df_btc.sort_values('timestamp'),
 #        on='timestamp',
 #        direction='nearest',
 #        tolerance=pd.Timedelta('15min')  # Maximum time difference for matching
 #    )
-#    
+#
 #    # Add price-based features
 #    df_features_with_price['btc_return_1'] = df_features_with_price['btc_price'].pct_change(1)
 #    df_features_with_price['btc_return_4'] = df_features_with_price['btc_price'].pct_change(4)  # 1 hour
 #    df_features_with_price['btc_volatility_96'] = df_features_with_price['btc_return_1'].rolling(96).std().shift(1)  # 24h volatility
-#    
+#
 #    # Check how many rows have BTC price data
 #    price_coverage = df_features_with_price['btc_price'].notna().sum()
 #    print(f"BTC price coverage: {price_coverage}/{len(df_features_with_price)} rows ({price_coverage/len(df_features_with_price)*100:.1f}%)")
-#    
+#
 #    # If we have good coverage (>50%), use the enriched features
 #    if price_coverage / len(df_features_with_price) > 0.5:
 #        # Fill any remaining NaN values in price features with forward fill then backward fill
 #        price_cols = ['btc_price', 'btc_return_1', 'btc_return_4', 'btc_volatility_96']
 #        df_features_with_price[price_cols] = df_features_with_price[price_cols].ffill().bfill()
-#        
+#
 #        df_features = df_features_with_price
 #        print("✓ Successfully enriched features with BTC price data!")
 #        print(f"New feature columns: {[col for col in df_features.columns if 'btc' in col]}")
 #    else:
 #        print("⚠ Low BTC price coverage, continuing without price features")
-#        
+#
 #except PriceUnavailableError as e:
 #    print(f"⚠ Could not fetch BTC price data: {e}")
 #    print("Continuing with DVOL features only")
 #except Exception as e:
 #    print(f"⚠ Unexpected error fetching price data: {e}")
 #    print("Continuing with DVOL features only")
+
 
 #print(f"\nFinal feature set size: {df_features.shape}")
 #print("Columns:", df_features.columns.tolist())
@@ -458,11 +467,9 @@ from pathlib import Path
 # Submission-ready RandomForest tracker with live feature engineering in predict()
 import numpy as np
 import pandas as pd
-import requests
 import base64
 import pickle
 import json
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from btcvol import TrackerBase
 
@@ -470,7 +477,7 @@ from btcvol import TrackerBase
 class MyTracker(TrackerBase):
     """
     Random Forest tracker with embedded model.
-    Uses TrackerBase helper methods to fetch live data at prediction time.
+    Uses TrackerBase methods that fetch from cache (production) or APIs (local).
     """
 
     # Class variables for embedded serialized model (populated after training)
@@ -480,13 +487,23 @@ class MyTracker(TrackerBase):
 
     def __init__(self):
         """Initialize tracker with embedded model and scaler."""
-        super().__init__()  # Initialize TrackerBase
-        
+        super().__init__()  # Initialize TrackerBase caches
+
         # Try to use notebook globals first (development mode)
         if 'model' in globals() and 'scaler' in globals() and 'feature_cols' in globals():
             self.model = globals()['model']
             self.scaler = globals()['scaler']
             self.feature_cols = globals()['feature_cols']
+
+            # Populate caches from notebook data for local testing
+            if 'df_dvol' in globals():
+                dvol_df = globals()['df_dvol'][['timestamp', 'dvol']].copy()
+                self._dvol_cache['BTC'] = dvol_df
+            if 'df_btc' in globals():
+                price_df = globals()['df_btc'].copy()
+                price_df = price_df.rename(columns={'btc_price': 'price'})
+                self._price_cache['BTC'] = price_df
+
             return
 
         # Try to load from resources/ (submission mode with files)
@@ -517,7 +534,7 @@ class MyTracker(TrackerBase):
         Mirrors the create_features function used during training.
         """
         df = data.copy()
-        
+
         # Ensure we have required columns
         if 'dvol' not in df.columns:
             raise ValueError("Missing 'dvol' column in data")
@@ -547,7 +564,7 @@ class MyTracker(TrackerBase):
 
         # Fill NaN values
         df = df.ffill().bfill()
-        
+
         # Ensure all required feature columns exist
         for col in self.feature_cols:
             if col not in df.columns:
@@ -558,25 +575,17 @@ class MyTracker(TrackerBase):
     def predict(self, asset: str, horizon: int, step: int):
         """
         Generate volatility predictions using RandomForest model.
-        Build live features at inference time from fresh DVOL and BTC price data.
+        Fetches data via TrackerBase methods (cache first, then APIs).
         """
         n_steps = max(1, horizon // step)
 
         try:
-            # Fetch price data from CrunchDAO API
-            number_days_prices = 15
-            pairs_prices = self.fetch_price_data(asset, days=number_days_prices, step=step)
-            
-            if pairs_prices:
-                df_prices = pd.DataFrame(pairs_prices, columns=["timestamp", "price"])
-                df_prices["timestamp"] = pd.to_datetime(df_prices["timestamp"], unit="s")
-                df_prices = df_prices.sort_values("timestamp")
-            else:
-                df_prices = pd.DataFrame(columns=["timestamp", "price"])
+            # Fetch price data via TrackerBase (cache or CrunchDAO API)
+            df_prices = self.fetch_price_data(asset)
 
-            # Fetch BTC DVOL history from Deribit API (via TrackerBase helper)
+            # Fetch DVOL data via TrackerBase (cache or Deribit API)
             df_dvol = self.fetch_latest_dvol_data(step=step)
-            
+
             if df_dvol is None or df_dvol.empty:
                 raise ValueError("No DVOL data available")
 
@@ -591,11 +600,11 @@ class MyTracker(TrackerBase):
 
             # Create features from merged data
             df_features = self._create_features_from_data(data)
-            
+
             # Get the most recent row with all features
             latest = df_features.iloc[-1:][self.feature_cols].copy()
             latest = latest.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-            
+
             # Make prediction
             X_scaled = self.scaler.transform(latest)
             pred_vol_pct = float(self.model.predict(X_scaled)[0])
@@ -643,3 +652,41 @@ class MyTracker(TrackerBase):
 #tracker = MyTracker()
 #print(tracker.predict(asset="BTC", horizon=3600, step=900))
 #print(tracker.predict(asset="BTC", horizon=86400, step=900))
+
+
+# Debug: Check tracker cache initialization
+#tracker_debug = MyTracker()
+#print("=== Tracker Cache Status ===")
+#print(f"DVOL cache keys: {list(tracker_debug._dvol_cache.keys())}")
+#print(f"Price cache keys: {list(tracker_debug._price_cache.keys())}")
+
+#if 'BTC' in tracker_debug._dvol_cache:
+#    dvol_cache = tracker_debug._dvol_cache['BTC']
+#    print(f"\nDVOL cache shape: {dvol_cache.shape}")
+#    print(f"DVOL cache columns: {dvol_cache.columns.tolist()}")
+#    print(f"DVOL cache date range: {dvol_cache['timestamp'].min()} to {dvol_cache['timestamp'].max()}")
+#    print(f"Sample DVOL cache:\n{dvol_cache.head()}")
+#else:
+#    print("⚠ No DVOL cache found!")
+
+#if 'BTC' in tracker_debug._price_cache:
+#    price_cache = tracker_debug._price_cache['BTC']
+#    print(f"\nPrice cache shape: {price_cache.shape}")
+#    print(f"Price cache columns: {price_cache.columns.tolist()}")
+#    print(f"Sample price cache:\n{price_cache.head()}")
+#else:
+#    print("⚠ No price cache found!")
+
+
+# @title  {"display-mode":"form", "form-width":"400px"}
+
+# @markdown Describe your changes, then run the cell.
+#Message = "test no freeze" # @param {"type":"string","placeholder":"Short description (optional)"}
+
+# ---
+# THIS METHOD IS ONLY POSSIBLE ON COLAB.
+# RUNNING THIS CELL WILL PROMPT YOU TO USE THE OLD WAY OF SUBMITTING A NOTEBOOK.
+
+#crunch_tools.submit(
+#    message=Message,
+#)

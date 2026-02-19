@@ -1,9 +1,20 @@
-# frozen from registry
+# extracted from a notebook
 
+## third-party
 btcvol
+crunch-cli  # alias of crunch
 matplotlib
 numpy
 pandas
 requests
-scikit-learn==1.8.0
+scikit-learn  # alias of sklearn
 seaborn
+
+## standard
+#base64
+#datetime
+#json
+#pathlib
+#pickle
+#subprocess
+#sys
